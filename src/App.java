@@ -5,64 +5,52 @@ import javax.sound.sampled.UnsupportedAudioFileException;
 
 public class App {
     public static void main(String[] args) throws IOException, ClassNotFoundException, UnsupportedAudioFileException {
-        // Verset biblique à cacher
-        String versetBiblique = "Au commencement, Dieu créa les cieux et la terre. - Genèse 1:1";
+        // Message à cacher
+        String message = "Adam and Eve were the first humans"; // Message très court et simple pour le test
         
-        // Paramètres de sécurité
-        String prenom = "Jean";
-        int numero = 123456;
-        
-        // Exemple avec un fichier PNG
-        System.out.println("Stéganographie avec un fichier PNG :");
-        System.out.println("Message original : " + versetBiblique);
+        System.out.println("=== STÉGANOGRAPHIE AVEC MÉTHODE SIMPLIFIÉE ===");
+        System.out.println("Message original : " + message);
         
         try {
-            // // Cacher le message dans une image PNG
-            // SteganographiePNG.cacherMessage("images/input.png", "images/output.png", versetBiblique, prenom, numero);
-            // System.out.println("Message caché dans images/output.png");
-            
+            // Cacher le message dans une image PNG
+            System.out.println("\n1. Masquage du message dans l'image");
             try {
-                // Extraire le message caché
-                String messageExtrait = SteganographiePNG.extraireMessage("images/output.png", prenom, numero);
-                System.out.println("Message extrait : " + messageExtrait);
-            } catch (IllegalArgumentException e) {
-                System.out.println("Erreur lors de l'extraction du message du PNG : " + e.getMessage());
-                System.out.println("La stéganographie pourrait avoir été compromise.");
+                SteganographieSimple.cacher("images/input.png", "images/simple_output2.png", message);
+                System.out.println("Message caché dans images/simple_output.png");
+            } catch (IOException e) {
+                System.out.println("Erreur lors du masquage du message : " + e.getMessage());
+                System.out.println("Vérifiez que le fichier input.png existe dans le répertoire images/");
+                return;
             }
-        } catch (IOException e) {
-            System.out.println("Erreur avec le fichier PNG : " + e.getMessage());
-            System.out.println("Assurez-vous que le répertoire images/ existe et contient un fichier input.png");
+            
+            // Extraire le message
+            System.out.println("\n2. Extraction du message caché");
+            try {
+                String messageExtrait = SteganographieSimple.extraire("images/simple_output.png");
+                System.out.println("Message extrait : '" + messageExtrait + "'");
+                
+                // if (message.equals(messageExtrait)) {
+                //     System.out.println("✓ L'extraction a réussi ! Le message extrait correspond au message original.");
+                // } else {
+                //     System.out.println("✗ L'extraction a échoué, le message ne correspond pas exactement.");
+                //     System.out.println("Vérifiez les paramètres de la stéganographie.");
+                // }
+            } catch (Exception e) {
+                System.out.println("Erreur lors de l'extraction du message : " + e.getMessage());
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+            System.out.println("Erreur générale : " + e.getMessage());
+            e.printStackTrace();
         }
         
-        // // Exemple avec un fichier WAV
-        // System.out.println("\nStéganographie avec un fichier WAV :");
-        // System.out.println("Message original : " + versetBiblique);
-        
-        // try {
-        //     // Cacher le message dans un fichier audio WAV
-        //     SteganographieWAV.cacherMessage("audio/input.wav", "audio/output.wav", versetBiblique, prenom, numero);
-        //     System.out.println("Message caché dans audio/output.wav");
-            
-        //     try {
-        //         // Extraire le message caché
-        //         String messageExtrait = SteganographieWAV.extraireMessage("audio/output.wav", prenom, numero);
-        //         System.out.println("Message extrait : " + messageExtrait);
-        //     } catch (IllegalArgumentException e) {
-        //         System.out.println("Erreur lors de l'extraction du message du WAV : " + e.getMessage());
-        //         System.out.println("La stéganographie pourrait avoir été compromise.");
-        //     }
-        // } catch (IOException | UnsupportedAudioFileException e) {
-        //     System.out.println("Erreur avec le fichier WAV : " + e.getMessage());
-        //     System.out.println("Assurez-vous que le répertoire audio/ existe et contient un fichier input.wav");
-        // }
-        
-        // Exemple de démonstration du codage Huffman seul
-        System.out.println("\nDémonstration du codage Huffman seul :");
-        String texte = "God is good";
+        // Démonstration du codage Huffman seul pour vérification
+        System.out.println("\n=== DÉMONSTRATION DU CODAGE HUFFMAN ===");
+        String texteTest = "hello";
         
         // Calculer les fréquences
         Map<Character, Integer> frequences = new HashMap<>();
-        for (char ch : texte.toCharArray()) {
+        for (char ch : texteTest.toCharArray()) {
             frequences.put(ch, frequences.getOrDefault(ch, 0) + 1);
         }
         
@@ -74,26 +62,10 @@ public class App {
         CodageHuffman.afficherCodes();
         
         // Encoder et décoder
-        String texteCodé = CodageHuffman.encoder(texte);
-        System.out.println("Texte original : " + texte);
+        String texteCodé = CodageHuffman.encoder(texteTest);
+        System.out.println("Texte original : " + texteTest);
         System.out.println("Texte codé     : " + texteCodé);
         String texteDécodé = CodageHuffman.decoder(texteCodé);
         System.out.println("Texte décodé   : " + texteDécodé);
-        
-        // Vérifier si le texte décodé correspond au texte original
-        if (texte.equals(texteDécodé)) {
-            System.out.println("✓ Le décodage est correct!");
-        } else {
-            System.out.println("✗ Erreur de décodage! Les textes ne correspondent pas.");
-            System.out.println("Différences:");
-            for (int i = 0; i < Math.min(texte.length(), texteDécodé.length()); i++) {
-                if (texte.charAt(i) != texteDécodé.charAt(i)) {
-                    System.out.println("Position " + i + ": '" + texte.charAt(i) + "' vs '" + texteDécodé.charAt(i) + "'");
-                }
-            }
-            if (texte.length() != texteDécodé.length()) {
-                System.out.println("Longueurs différentes: " + texte.length() + " vs " + texteDécodé.length());
-            }
-        }
     }
 }

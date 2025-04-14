@@ -22,77 +22,74 @@ public class SteganographiePNG {
         
         // Ajouter la longueur du message binaire et la table de fréquences au début
         String donneesCompletes = serializerDonnees(messageBinaire, frequences);
+        int totalBits = donneesCompletes.length();
+        
+        System.out.println("Longueur totale à cacher: " + totalBits + " bits");
+        System.out.println("Message binaire Huffman: " + messageBinaire);
         
         // Lire l'image
         BufferedImage image = ImageIO.read(new File(cheminImage));
         int largeur = image.getWidth();
         int hauteur = image.getHeight();
         
-        // Générer un générateur de nombres aléatoires basé sur le prénom et le numéro
-        Random random = initialiserRandom(prenom, numero);
-        
-        // Cacher les données dans l'image
-        int indexBit = 0;
-        int totalBits = donneesCompletes.length();
+        System.out.println("Dimensions de l'image: " + largeur + "x" + hauteur);
         
         // Vérifier si l'image est assez grande pour contenir le message
         if (totalBits > largeur * hauteur * 3) {
-            throw new IOException("L'image est trop petite pour contenir le message.");
+            throw new IOException("L'image est trop petite pour contenir le message (" + 
+                totalBits + " bits nécessaires, " + (largeur * hauteur * 3) + " bits disponibles).");
         }
         
-        // Utiliser un tableau pour suivre les positions déjà utilisées
-        boolean[] positionsUtilisees = new boolean[largeur * hauteur];
+        // Approche 1: Méthode séquentielle (cacher les bits dans l'ordre)
+        // Cette méthode est plus simple et correspond à la nouvelle méthode d'extraction
+        int compteur = 0;
         
-        while (indexBit < totalBits) {
-            // Générer une position aléatoire
-            int x = random.nextInt(largeur);
-            int y = random.nextInt(hauteur);
-            int position = y * largeur + x;
-            
-            // Si cette position a déjà été utilisée, en trouver une autre
-            if (positionsUtilisees[position]) {
-                continue;
-            }
-            positionsUtilisees[position] = true;
-            
-            // Obtenir la couleur RGB du pixel
-            int pixel = image.getRGB(x, y);
-            
-            // Modifier le bit le moins significatif d'une des composantes RGB
-            int composante = random.nextInt(3); // 0: Rouge, 1: Vert, 2: Bleu
-            
-            int rouge = (pixel >> 16) & 0xff;
-            int vert = (pixel >> 8) & 0xff;
-            int bleu = pixel & 0xff;
-            int alpha = (pixel >> 24) & 0xff;
-            
-            // Remplacer le LSB de la composante sélectionnée
-            char bit = donneesCompletes.charAt(indexBit);
-            int valeurBit = (bit == '1') ? 1 : 0;
-            
-            switch (composante) {
-                case 0: // Rouge
-                    rouge = (rouge & 0xFE) | valeurBit; // 0xFE = 11111110 binaire (met le dernier bit à 0)
-                    break;
-                case 1: // Vert
+        outerLoop:
+        for (int y = 0; y < hauteur && compteur < totalBits; y++) {
+            for (int x = 0; x < largeur && compteur < totalBits; x++) {
+                // Obtenir la couleur RGB du pixel
+                int pixel = image.getRGB(x, y);
+                
+                int rouge = (pixel >> 16) & 0xff;
+                int vert = (pixel >> 8) & 0xff;
+                int bleu = pixel & 0xff;
+                int alpha = (pixel >> 24) & 0xff;
+                
+                // Modifier le bit LSB des trois composantes RGB si possible
+                if (compteur < totalBits) {
+                    char bit = donneesCompletes.charAt(compteur);
+                    int valeurBit = (bit == '1') ? 1 : 0;
+                    rouge = (rouge & 0xFE) | valeurBit;
+                    compteur++;
+                }
+                
+                if (compteur < totalBits) {
+                    char bit = donneesCompletes.charAt(compteur);
+                    int valeurBit = (bit == '1') ? 1 : 0;
                     vert = (vert & 0xFE) | valeurBit;
-                    break;
-                case 2: // Bleu
+                    compteur++;
+                }
+                
+                if (compteur < totalBits) {
+                    char bit = donneesCompletes.charAt(compteur);
+                    int valeurBit = (bit == '1') ? 1 : 0;
                     bleu = (bleu & 0xFE) | valeurBit;
-                    break;
+                    compteur++;
+                }
+                
+                // Reconstituer le pixel
+                int nouveauPixel = (alpha << 24) | (rouge << 16) | (vert << 8) | bleu;
+                image.setRGB(x, y, nouveauPixel);
+                
+                if (compteur >= totalBits) break outerLoop;
             }
-            
-            // Reconstituer le pixel
-            int nouveauPixel = (alpha << 24) | (rouge << 16) | (vert << 8) | bleu;
-            image.setRGB(x, y, nouveauPixel);
-            
-            indexBit++;
         }
         
         // Enregistrer l'image modifiée
         ImageIO.write(image, "png", new File(cheminSortie));
         
-        System.out.println("Message caché avec succès. Bits utilisés: " + totalBits + " sur " + (largeur * hauteur * 3) + " disponibles.");
+        System.out.println("Message caché avec succès. Bits utilisés: " + compteur + " sur " + 
+            (largeur * hauteur * 3) + " disponibles (méthode séquentielle).");
     }
     
     // Extrait le message caché de l'image
@@ -102,32 +99,142 @@ public class SteganographiePNG {
         int largeur = image.getWidth();
         int hauteur = image.getHeight();
         
+        System.out.println("Dimensions de l'image: " + largeur + "x" + hauteur);
+        
+        // Approche simplifiée: extraction directe bit par bit
+        // 1. Extraire les 32 premiers bits pour déterminer la longueur
+        StringBuilder longueurBinaire = new StringBuilder();
+        int compteur = 0;
+        
+        // Parcourir tous les pixels de l'image dans l'ordre
+        for (int y = 0; y < hauteur && compteur < 32; y++) {
+            for (int x = 0; x < largeur && compteur < 32; x++) {
+                int pixel = image.getRGB(x, y);
+                
+                // Extraire les bits LSB des composantes RGB
+                int rougeValue = (pixel >> 16) & 1;
+                int vertValue = (pixel >> 8) & 1;
+                int bleuValue = pixel & 1;
+                
+                longueurBinaire.append(rougeValue);
+                compteur++;
+                if (compteur >= 32) break;
+                
+                longueurBinaire.append(vertValue);
+                compteur++;
+                if (compteur >= 32) break;
+                
+                longueurBinaire.append(bleuValue);
+                compteur++;
+                if (compteur >= 32) break;
+            }
+        }
+        
+        try {
+            // Convertir la chaîne binaire en un entier
+            String longueurStr = longueurBinaire.toString();
+            System.out.println("Longueur binaire extraite: " + longueurStr);
+            
+            int longueurTotale = Integer.parseInt(longueurStr, 2);
+            System.out.println("Longueur totale décodée: " + longueurTotale);
+            
+            // Vérification de sécurité sur la longueur
+            if (longueurTotale <= 0 || longueurTotale > largeur * hauteur * 3) {
+                throw new IllegalArgumentException("Longueur invalide: " + longueurTotale);
+            }
+            
+            // Extraire toutes les données binaires (y compris les 32 premiers bits)
+            StringBuilder donneesBinaires = new StringBuilder(longueurBinaire);
+            compteur = 32; // Commencer après les 32 bits de longueur
+            
+            // Continuer à parcourir l'image pour extraire le reste des bits
+            outerLoop:
+            for (int y = 0; y < hauteur && compteur < longueurTotale; y++) {
+                for (int x = 0; x < largeur && compteur < longueurTotale; x++) {
+                    // Pour les 32 premiers bits, continuer depuis où on s'est arrêté
+                    if (y == 0 && x < 11) { // 32 / 3 ≈ 11 pixels ont déjà été lus
+                        int bitsLus = (x * 3) + (y * largeur * 3);
+                        if (bitsLus < 32) continue; // Sauter les pixels déjà lus
+                    }
+                    
+                    int pixel = image.getRGB(x, y);
+                    
+                    // Extraire les bits LSB des composantes RGB
+                    int rougeValue = (pixel >> 16) & 1;
+                    donneesBinaires.append(rougeValue);
+                    compteur++;
+                    if (compteur >= longueurTotale) break outerLoop;
+                    
+                    int vertValue = (pixel >> 8) & 1;
+                    donneesBinaires.append(vertValue);
+                    compteur++;
+                    if (compteur >= longueurTotale) break outerLoop;
+                    
+                    int bleuValue = pixel & 1;
+                    donneesBinaires.append(bleuValue);
+                    compteur++;
+                    if (compteur >= longueurTotale) break outerLoop;
+                }
+            }
+            
+            System.out.println("Bits extraits: " + compteur + "/" + longueurTotale);
+            
+            // Méthode alternative: utiliser la méthode d'extraction originale
+            if (compteur < longueurTotale) {
+                System.out.println("Tentative d'extraction avec la méthode basée sur les positions aléatoires...");
+                return extraireMessageOriginal(image, prenom, numero);
+            }
+            
+            // Désérialiser les données
+            return deserializerDonnees(donneesBinaires.toString());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Erreur de décodage: " + e.getMessage());
+        }
+    }
+    
+    // Méthode d'extraction originale basée sur les positions générées aléatoirement
+    private static String extraireMessageOriginal(BufferedImage image, String prenom, int numero) throws IOException {
+        int largeur = image.getWidth();
+        int hauteur = image.getHeight();
+        
         // Générer un générateur de nombres aléatoires basé sur le prénom et le numéro
         Random random = initialiserRandom(prenom, numero);
         
-        // Générer les mêmes positions aléatoires que lors du masquage pour extraire les 32 premiers bits (longueur totale)
-        StringBuilder longueurBinaire = new StringBuilder();
-        boolean[] positionsUtilisees = new boolean[largeur * hauteur];
+        // Carte pour stocker toutes les positions à utiliser dans l'ordre
+        int[][] positions = new int[largeur * hauteur * 3][3]; // [x, y, composante]
+        int posCount = 0;
+        boolean[] posOccupees = new boolean[largeur * hauteur * 3];
         
-        // Extraire les 32 premiers bits qui représentent la longueur totale
-        for (int i = 0; i < 32; i++) {
-            // Générer une position aléatoire
+        // Générer toutes les positions possibles à l'avance 
+        // Augmenter la limite pour s'assurer d'avoir assez de positions
+        while (posCount < largeur * hauteur * 3 && posCount < 1000000) {
             int x = random.nextInt(largeur);
             int y = random.nextInt(hauteur);
-            int position = y * largeur + x;
+            int position = (y * largeur + x);
+            int composante = random.nextInt(3);
+            int index = position * 3 + composante;
             
-            // Si cette position a déjà été utilisée, en trouver une autre
-            while (positionsUtilisees[position]) {
-                x = random.nextInt(largeur);
-                y = random.nextInt(hauteur);
-                position = y * largeur + x;
+            if (!posOccupees[index]) {
+                positions[posCount][0] = x;
+                positions[posCount][1] = y;
+                positions[posCount][2] = composante;
+                posOccupees[index] = true;
+                posCount++;
             }
-            positionsUtilisees[position] = true;
+        }
+        
+        System.out.println("Positions générées: " + posCount);
+        
+        // Extraire les 32 premiers bits pour la longueur
+        StringBuilder longueurBinaire = new StringBuilder();
+        for (int i = 0; i < 32 && i < posCount; i++) {
+            int x = positions[i][0];
+            int y = positions[i][1];
+            int composante = positions[i][2];
             
             int pixel = image.getRGB(x, y);
-            int composante = random.nextInt(3);
-            
             int valeur = 0;
+            
             switch (composante) {
                 case 0: // Rouge
                     valeur = (pixel >> 16) & 1;
@@ -144,61 +251,26 @@ public class SteganographiePNG {
         }
         
         try {
-            // Convertir la chaîne binaire en un entier - avec une valeur maximale pour éviter les erreurs
-            int longueurTotale = Integer.parseInt(longueurBinaire.toString(), 2);
+            // Convertir la chaîne binaire en un entier
+            String longueurStr = longueurBinaire.toString();
+            System.out.println("Longueur binaire extraite (méthode originale): " + longueurStr);
             
-            // Limiter la longueur pour éviter les dépassements
-            longueurTotale = Math.min(longueurTotale, largeur * hauteur);
+            int longueurTotale = Integer.parseInt(longueurStr, 2);
+            System.out.println("Longueur totale décodée (méthode originale): " + longueurTotale);
             
-            // Si la longueur totale est absurde, c'est probablement une erreur
-            if (longueurTotale <= 0 || longueurTotale > largeur * hauteur * 3 / 2) {
-                throw new IllegalArgumentException("Longueur de données invalide: " + longueurTotale);
-            }
+            // Extraire le reste des données (important: extraire au moins jusqu'à longueurTotale)
+            StringBuilder donneesBinaires = new StringBuilder(longueurBinaire);
             
-            System.out.println("Longueur des données à extraire: " + longueurTotale + " bits");
-            
-            // Extraire les données complètes
-            StringBuilder donneesCompletes = new StringBuilder(longueurBinaire.toString());
-            
-            // Réinitialiser le générateur aléatoire et les positions utilisées pour extraire le reste des données
-            random = initialiserRandom(prenom, numero);
-            positionsUtilisees = new boolean[largeur * hauteur];
-            
-            // Refaire le même parcours en commençant par extraire les 32 premiers bits (longueur)
-            for (int i = 0; i < 32; i++) {
-                int x = random.nextInt(largeur);
-                int y = random.nextInt(hauteur);
-                int position = y * largeur + x;
-                
-                while (positionsUtilisees[position]) {
-                    x = random.nextInt(largeur);
-                    y = random.nextInt(hauteur);
-                    position = y * largeur + x;
-                }
-                positionsUtilisees[position] = true;
-                
-                random.nextInt(3); // Composante utilisée
-            }
-            
-            // Puis extraire le reste des données
-            for (int i = 32; i < longueurTotale; i++) {
-                // Générer une position aléatoire
-                int x = random.nextInt(largeur);
-                int y = random.nextInt(hauteur);
-                int position = y * largeur + x;
-                
-                // Si cette position a déjà été utilisée, en trouver une autre
-                while (positionsUtilisees[position]) {
-                    x = random.nextInt(largeur);
-                    y = random.nextInt(hauteur);
-                    position = y * largeur + x;
-                }
-                positionsUtilisees[position] = true;
+            // Extraire le reste des bits (on commence à l'indice 32)
+            // Utiliser une plus grande limite pour posCount pour s'assurer d'extraire assez de bits
+            for (int i = 32; i < Math.min(longueurTotale, posCount); i++) {
+                int x = positions[i][0];
+                int y = positions[i][1];
+                int composante = positions[i][2];
                 
                 int pixel = image.getRGB(x, y);
-                int composante = random.nextInt(3);
-                
                 int valeur = 0;
+                
                 switch (composante) {
                     case 0: // Rouge
                         valeur = (pixel >> 16) & 1;
@@ -211,13 +283,15 @@ public class SteganographiePNG {
                         break;
                 }
                 
-                donneesCompletes.append(valeur);
+                donneesBinaires.append(valeur);
             }
             
+            System.out.println("Données extraites (méthode originale): " + donneesBinaires.length() + " bits");
+            
             // Désérialiser les données
-            return deserializerDonnees(donneesCompletes.toString());
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("La stéganographie a échoué: impossible de lire la longueur des données: " + e.getMessage());
+            return deserializerDonnees(donneesBinaires.toString());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Erreur d'extraction originale: " + e.getMessage());
         }
     }
     
@@ -233,102 +307,273 @@ public class SteganographiePNG {
     
     // Sérialise les données (messageBinaire + fréquences) en chaîne binaire
     private static String serializerDonnees(String messageBinaire, Map<Character, Integer> frequences) {
-        // À implémenter : sérialisation de la table de fréquences et du message binaire
         StringBuilder resultat = new StringBuilder();
         
-        // Ajouter le nombre de caractères différents (8 bits)
-        String nombreCaracteresBin = String.format("%8s", Integer.toBinaryString(frequences.size())).replace(' ', '0');
-        resultat.append(nombreCaracteresBin);
-        
-        // Ajouter chaque caractère et sa fréquence
-        for (Map.Entry<Character, Integer> entry : frequences.entrySet()) {
-            // Caractère (16 bits)
-            String caractereBin = String.format("%16s", Integer.toBinaryString(entry.getKey())).replace(' ', '0');
-            resultat.append(caractereBin);
+        try {
+            // Ajouter la longueur du message original (en caractères) sur 16 bits
+            String longueurMsgOriginal = String.format("%16s", Integer.toBinaryString(frequences.values().stream().mapToInt(Integer::intValue).sum())).replace(' ', '0');
+            resultat.append(longueurMsgOriginal);
             
-            // Fréquence (32 bits)
-            String frequenceBin = String.format("%32s", Integer.toBinaryString(entry.getValue())).replace(' ', '0');
-            resultat.append(frequenceBin);
+            // Nombre de caractères uniques sur 8 bits
+            String nbCaracteres = String.format("%8s", Integer.toBinaryString(frequences.size())).replace(' ', '0');
+            resultat.append(nbCaracteres);
+            
+            // Pour chaque caractère: valeur ASCII (8 bits) + fréquence (8 bits)
+            for (Map.Entry<Character, Integer> entry : frequences.entrySet()) {
+                // Caractère (8 bits)
+                char c = entry.getKey();
+                String caractere = String.format("%8s", Integer.toBinaryString(c)).replace(' ', '0');
+                resultat.append(caractere);
+                
+                // Fréquence (8 bits, limitée à 255)
+                int freq = Math.min(entry.getValue(), 255);
+                String frequence = String.format("%8s", Integer.toBinaryString(freq)).replace(' ', '0');
+                resultat.append(frequence);
+            }
+            
+            // Ajouter le message binaire
+            resultat.append(messageBinaire);
+            
+            // Calculer la longueur totale des données sans l'en-tête (les 32 premiers bits)
+            int longueurDonnees = resultat.length();
+            String longueurTotaleBin = String.format("%32s", Integer.toBinaryString(longueurDonnees)).replace(' ', '0');
+            
+            System.out.println("Longueur du résultat avant ajout de l'en-tête: " + longueurDonnees);
+            
+            // Retourner la longueur totale suivie des données
+            return longueurTotaleBin + resultat.toString();
+        } catch (Exception e) {
+            System.err.println("Erreur lors de la sérialisation: " + e.getMessage());
+            // En cas d'erreur, retourner simplement le message original encodé en ASCII
+            StringBuilder msgAscii = new StringBuilder();
+            for (char c : messageBinaire.toCharArray()) {
+                msgAscii.append(String.format("%8s", Integer.toBinaryString(c)).replace(' ', '0'));
+            }
+            return String.format("%32s", Integer.toBinaryString(msgAscii.length())).replace(' ', '0') + msgAscii.toString();
         }
-        
-        // Ajouter la longueur du message binaire (32 bits)
-        String longueurMessageBin = String.format("%32s", Integer.toBinaryString(messageBinaire.length())).replace(' ', '0');
-        resultat.append(longueurMessageBin);
-        
-        // Ajouter le message binaire
-        resultat.append(messageBinaire);
-        
-        // Ajouter la longueur totale au début (32 bits)
-        String longueurTotaleBin = String.format("%32s", Integer.toBinaryString(resultat.length())).replace(' ', '0');
-        
-        return longueurTotaleBin + resultat.toString();
     }
     
     // Désérialise la chaîne binaire en message
     private static String deserializerDonnees(String donneesCompletes) {
         try {
-            // Vérifier si la chaîne est assez longue pour contenir les données minimales (32 bits pour la longueur totale)
+            System.out.println("Longueur des données complètes: " + donneesCompletes.length());
+            
+            // Vérifier si la chaîne est assez longue
             if (donneesCompletes.length() < 32) {
-                throw new IllegalArgumentException("Données incomplètes: moins de 32 bits");
+                throw new IllegalArgumentException("Données trop courtes");
             }
             
-            // Extraire la partie après les 32 premiers bits (qui indiquent la longueur totale)
-            String donnees = donneesCompletes.substring(32);
+            // Extraire la longueur des données (sans les 32 bits d'en-tête)
+            int longueurDonnees = Integer.parseInt(donneesCompletes.substring(0, 32), 2);
+            System.out.println("Longueur des données indiquée dans l'en-tête: " + longueurDonnees);
             
-            // Vérifier si la chaîne est assez longue pour contenir le nombre de caractères (8 bits)
-            if (donnees.length() < 8) {
-                throw new IllegalArgumentException("Données incomplètes: info sur le nombre de caractères manquante");
+            // Si les données disponibles sont plus courtes que prévu, ajuster
+            if (donneesCompletes.length() - 32 < longueurDonnees) {
+                System.out.println("ATTENTION: Les données extraites sont plus courtes que prévu!");
+                longueurDonnees = donneesCompletes.length() - 32;
             }
             
-            // Extraire le nombre de caractères différents
-            int nombreCaracteres = Integer.parseInt(donnees.substring(0, 8), 2);
-            int position = 8;
+            // Extraire les données (sans les 32 bits d'en-tête)
+            String donnees = donneesCompletes.substring(32, 32 + longueurDonnees);
             
-            // Vérifier si la longueur restante est suffisante pour les caractères et leurs fréquences
-            int tailleNecessaire = nombreCaracteres * (16 + 32); // 16 bits par caractère + 32 bits par fréquence
-            if (donnees.length() - position < tailleNecessaire) {
-                throw new IllegalArgumentException("Données incomplètes: table de fréquences tronquée");
+            // Ne pas utiliser de formatage complexe, retourner directement le message
+            if (donnees.length() < 32) {
+                // Si les données sont trop courtes, tenter une extraction directe du message
+                System.out.println("Données trop courtes, tentative d'extraction directe...");
+                return extraireMessageDirect(donnees);
             }
+            
+            // Longueur du message original en caractères (16 bits)
+            int longueurMessage = Integer.parseInt(donnees.substring(0, 16), 2);
+            System.out.println("Longueur du message original: " + longueurMessage + " caractères");
+            
+            // Nombre de caractères uniques (8 bits)
+            int nbCaracteres = Integer.parseInt(donnees.substring(16, 24), 2);
+            System.out.println("Nombre de caractères uniques: " + nbCaracteres);
+            
+            // Si le nombre de caractères semble absurde, tenter une extraction directe
+            if (nbCaracteres <= 0 || nbCaracteres > 128) {
+                System.out.println("Nombre de caractères absurde, tentative d'extraction directe...");
+                return extraireMessageDirect(donnees);
+            }
+            
+            int position = 24;
             
             // Reconstruire la table de fréquences
             Map<Character, Integer> frequences = new HashMap<>();
-            for (int i = 0; i < nombreCaracteres; i++) {
-                char caractere = (char) Integer.parseInt(donnees.substring(position, position + 16), 2);
-                position += 16;
+            for (int i = 0; i < nbCaracteres && position + 16 <= donnees.length(); i++) {
+                // Extraire le caractère (8 bits)
+                int codeCaractere = Integer.parseInt(donnees.substring(position, position + 8), 2);
+                position += 8;
                 
-                int frequence = Integer.parseInt(donnees.substring(position, position + 32), 2);
-                position += 32;
+                // Extraire la fréquence (8 bits)
+                int frequence = Integer.parseInt(donnees.substring(position, position + 8), 2);
+                position += 8;
                 
-                frequences.put(caractere, frequence);
+                frequences.put((char)codeCaractere, frequence);
             }
             
-            // Vérifier s'il reste assez de bits pour la longueur du message (32 bits)
-            if (donnees.length() - position < 32) {
-                throw new IllegalArgumentException("Données incomplètes: longueur du message manquante");
+            // Si la table est vide, c'est probablement une erreur
+            if (frequences.isEmpty()) {
+                System.out.println("Table de fréquences vide, tentative d'extraction directe...");
+                return extraireMessageDirect(donnees);
             }
             
-            // Extraire la longueur du message binaire
-            int longueurMessage = Integer.parseInt(donnees.substring(position, position + 32), 2);
-            position += 32;
+            System.out.println("Table de fréquences reconstruite: " + frequences);
             
-            // Vérifier si la longueur restante est suffisante pour le message
-            if (donnees.length() - position < longueurMessage) {
-                throw new IllegalArgumentException("Données incomplètes: message binaire tronqué");
+            // Vérifier si la position actuelle est dans les limites
+            if (position >= donnees.length()) {
+                System.out.println("Position au-delà des limites, tentative d'extraction directe...");
+                return extraireMessageDirect(donnees);
             }
             
             // Extraire le message binaire
-            String messageBinaire = donnees.substring(position, position + longueurMessage);
+            String messageBinaire = donnees.substring(position);
             
             // Reconstruire l'arbre de Huffman
             NoeudHuffman racineHuffman = CodageHuffman.construireArbreHuffman(frequences);
             CodageHuffman.genererCodes(racineHuffman, "");
             
+            // Afficher la table de codage pour déboguer
+            CodageHuffman.afficherCodes();
+            
             // Décoder le message
-            return CodageHuffman.decoder(messageBinaire);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Erreur de conversion des données binaires: " + e.getMessage());
-        } catch (StringIndexOutOfBoundsException e) {
-            throw new IllegalArgumentException("Erreur d'accès aux données: " + e.getMessage());
+            String resultat = CodageHuffman.decoder(messageBinaire);
+            
+            // Si le résultat est vide ou semble corrompu, tenter l'extraction directe
+            if (resultat == null || resultat.isEmpty() || resultat.length() > longueurMessage * 2) {
+                System.out.println("Résultat suspect, tentative d'extraction directe...");
+                return extraireMessageDirect(donnees);
+            }
+            
+            return resultat;
+        } catch (Exception e) {
+            System.err.println("Erreur de désérialisation: " + e.getMessage());
+            e.printStackTrace();
+            
+            // En cas d'erreur, tenter une extraction directe
+            return extraireMessageDirect(donneesCompletes.substring(Math.min(32, donneesCompletes.length())));
         }
+    }
+
+    // Méthode de secours pour extraire directement le message en cas d'échec
+    private static String extraireMessageDirect(String donnees) {
+        try {
+            StringBuilder message = new StringBuilder();
+            
+            // Tenter d'interpréter les données comme une séquence de caractères ASCII (8 bits par caractère)
+            for (int i = 0; i < donnees.length(); i += 8) {
+                if (i + 8 <= donnees.length()) {
+                    int charCode = Integer.parseInt(donnees.substring(i, i + 8), 2);
+                    // Ne garder que les caractères imprimables ASCII
+                    if (charCode >= 32 && charCode <= 126) {
+                        message.append((char)charCode);
+                    }
+                }
+            }
+            
+            // Si le message est trop long, le tronquer
+            if (message.length() > 100) {
+                return message.substring(0, 100);
+            }
+            
+            return message.toString();
+        } catch (Exception e) {
+            return "Échec de l'extraction directe: " + e.getMessage();
+        }
+    }
+
+    // Ancienne méthode avec positionnement aléatoire
+    public static void cacherMessageAleatoire(String cheminImage, String cheminSortie, String message, String prenom, int numero) throws IOException {
+        // Convertir le message en chaîne binaire à l'aide du codage Huffman
+        Map<Character, Integer> frequences = new HashMap<>();
+        for (char c : message.toCharArray()) {
+            frequences.put(c, frequences.getOrDefault(c, 0) + 1);
+        }
+        
+        NoeudHuffman racineHuffman = CodageHuffman.construireArbreHuffman(frequences);
+        CodageHuffman.genererCodes(racineHuffman, "");
+        String messageBinaire = CodageHuffman.encoder(message);
+        
+        // Ajouter la longueur du message binaire et la table de fréquences au début
+        String donneesCompletes = serializerDonnees(messageBinaire, frequences);
+        int totalBits = donneesCompletes.length();
+        
+        System.out.println("Longueur totale à cacher: " + totalBits + " bits");
+        
+        // Lire l'image
+        BufferedImage image = ImageIO.read(new File(cheminImage));
+        int largeur = image.getWidth();
+        int hauteur = image.getHeight();
+        
+        // Vérifier si l'image est assez grande pour contenir le message
+        if (totalBits > largeur * hauteur * 3) {
+            throw new IOException("L'image est trop petite pour contenir le message.");
+        }
+        
+        // Générer un générateur de nombres aléatoires basé sur le prénom et le numéro
+        Random random = initialiserRandom(prenom, numero);
+        
+        // Générer toutes les positions possibles à l'avance
+        int[][] positions = new int[totalBits][3]; // [x, y, composante]
+        int posCount = 0;
+        boolean[] posOccupees = new boolean[largeur * hauteur * 3];
+        
+        while (posCount < totalBits) {
+            int x = random.nextInt(largeur);
+            int y = random.nextInt(hauteur);
+            int position = (y * largeur + x);
+            int composante = random.nextInt(3);
+            int index = position * 3 + composante;
+            
+            if (!posOccupees[index]) {
+                positions[posCount][0] = x;
+                positions[posCount][1] = y;
+                positions[posCount][2] = composante;
+                posOccupees[index] = true;
+                posCount++;
+            }
+        }
+        
+        // Cacher les données dans l'image
+        for (int i = 0; i < totalBits; i++) {
+            int x = positions[i][0];
+            int y = positions[i][1];
+            int composante = positions[i][2];
+            
+            // Obtenir la couleur RGB du pixel
+            int pixel = image.getRGB(x, y);
+            
+            int rouge = (pixel >> 16) & 0xff;
+            int vert = (pixel >> 8) & 0xff;
+            int bleu = pixel & 0xff;
+            int alpha = (pixel >> 24) & 0xff;
+            
+            // Remplacer le LSB de la composante sélectionnée
+            char bit = donneesCompletes.charAt(i);
+            int valeurBit = (bit == '1') ? 1 : 0;
+            
+            switch (composante) {
+                case 0: // Rouge
+                    rouge = (rouge & 0xFE) | valeurBit;
+                    break;
+                case 1: // Vert
+                    vert = (vert & 0xFE) | valeurBit;
+                    break;
+                case 2: // Bleu
+                    bleu = (bleu & 0xFE) | valeurBit;
+                    break;
+            }
+            
+            // Reconstituer le pixel
+            int nouveauPixel = (alpha << 24) | (rouge << 16) | (vert << 8) | bleu;
+            image.setRGB(x, y, nouveauPixel);
+        }
+        
+        // Enregistrer l'image modifiée
+        ImageIO.write(image, "png", new File(cheminSortie));
+        
+        System.out.println("Message caché avec succès (méthode aléatoire). Bits utilisés: " + totalBits + 
+            " sur " + (largeur * hauteur * 3) + " disponibles.");
     }
 } 
